@@ -4,25 +4,20 @@ require 'hpricot'
 require 'nkf'
 
 def je_desc
-  "je>word: 和英辞典をひきます。"
+  "je>word: 和英辞書をひきます。"
 end
 
 def je(msg)
-  query = URI.encode(toeuc(msg))
-  # goo ではEUCコードが使われている
+  query = URI.encode(msg.toutf8)
+  # goo ではutf8が使われている
 
-  # 検索パタンを作る。「完全一致モード」で日本語辞書を呼び出す
-  pat="/search.php?MT=" + query+ "&je.x=24&je.y=12&kind=je&mode=1"
-  data = http_get("http://dictionary.goo.ne.jp#{pat}")
+  # 検索パタンを作る。「完全一致モード」で和英辞書を呼び出す
+  url = "http://dictionary.goo.ne.jp/freewordsearcher.html?MT=#{query}&mode=1&id=top&kind=je"
+  data = open(url).read
 
   doc = Hpricot(data)
-#   ary = (doc/"div.mainlst").inner_text.gsub("&nbsp;", " ").
-#     gsub("━━", "\n----").gsub("）", ") ").gsub("（", " (").
-#     gsub("【", " [[").gsub("】", "]] ").to_a
-#   ary = ary.map{|i| i.strip}.delete_if{|i| i.empty? || /^----/ !~ i}
-  mainlst = (doc/"div.mainlst")
-  (mainlst/"br").map{|i| i.swap("\n")}
-  ary = mainlst.inner_text.gsub("&nbsp;", " ").to_a.map{|i| i.strip}.delete_if{|i| i.empty?}
+  ary = (doc/".ja-enResultArea").inner_text.gsub("&nbsp;", " ").
+    gsub("━━", "\n━━").toeuc.to_a
 
   if ary.empty?
     "単語が見つかりません。"

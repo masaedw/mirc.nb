@@ -1,28 +1,32 @@
 # from http://www.cyber.sccs.chukyo-u.ac.jp/sirai/classes/nlp/
 
 def dict_desc
-  "dict>word: 国語辞典をひきます。"
+  "dict>word: 国語辞書をひきます。"
 end
 
 def dict(msg)
-  query = toeuc(msg)  # をもらって query に記憶
-  # goo ではEUCコードが使われている
+  query = URI.encode(msg.toutf8)
+  # goo ではutf8が使われている
 
-  # 検索パタンを作る。「完全一致モード」で日本語辞書を呼び出す
-  pat="/search.php?MT=" + query+ "&jn.x=28&jn.y=10&jn=%B9%F1%B8%EC&kind=&mode=1"
-  data = http_get("http://dictionary.goo.ne.jp#{pat}")
+  # 検索パタンを作る。「完全一致モード」で国語辞書を呼び出す
+  url = "http://dictionary.goo.ne.jp/freewordsearcher.html?MT=#{query}&mode=1&id=top&kind=jn"
+  data = open(url).read
+  @logger.slog url
 
   doc = Hpricot(data)
-  ary = (doc/"div.mainlst").inner_text.to_a
-  if ary.size > 2
-    ret = ary[1]
-  else
-    ret = ary.join[0..200]
+  ary = (doc/".wordDefinition").inner_text.gsub("&nbsp;", " ").
+    gsub("━━", "\n━━").toeuc.to_a
+
+  if !ary.empty?
+    return ary
   end
 
-  if ret.empty?
+  ary = (doc/".resultList").inner_text.gsub("&nbsp;", " ").
+    gsub("━━", "\n━━").toeuc.to_a
+
+  if ary.empty?
     "単語が見つかりません。"
   else
-    ret
+    ary
   end
 end
