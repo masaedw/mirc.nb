@@ -1,0 +1,329 @@
+# -*- coding: euc-jp mode: ruby -*-
+#
+# Copyright (C) 2007  Masayuki Muto  <masa.edw at gmail.com>
+#
+# mirc compatible layer.
+# mirc is made by shinh. see (http://shinh.skr.jp/koneta/#mirc).
+#
+# This program is free software with ABSOLUTELY NO WARRANTY.
+# You can re-distribute and/or modify this program under
+# NYSL
+#
+=begin
+
+== Abstract
+
+mirc compatibility layer
+
+== Configuration
+
+=== nadokarc
+
+BotConfig => [
+{
+  :name => :Mirc,
+  :plugins => "./mirc_plugins",
+  :filters => "./mirc_filters",
+  :datadir => "./mirc_data",
+  :proxy_host => nil,
+  :proxy_port => nil,
+}
+]
+
+=end
+
+require 'nkf'
+require 'kconv'
+require 'net/http'
+
+class Mirc < Nadoka::NDK_Bot
+  class FakeMircContext
+    def set prefix, cn
+      Thread.current["target"] = cn
+      Thread.current["nick"] = prefix.nick
+      Thread.current["user"] = prefix.user
+    end
+
+    def target
+      Thread.current["target"]
+    end
+
+    def target= arg
+      Thread.current["target"] = arg
+    end
+
+    def nick
+      Thread.current["nick"]
+    end
+
+    def nick= arg
+      Thread.current["nick"] = arg
+    end
+
+    def user
+      Thread.current["user"]
+    end
+
+    def user= arg
+      Thread.current["user"] = arg
+    end
+  end
+
+  class FakeMirc
+    def self.const_missing sym
+      if sym == :NICK
+        class_variable_get(:@@state).nick
+      else
+        raise NameError, sym.inspect
+      end
+    end
+
+    def initialize state, logger, bot, pdir, fdir, datadir, proxy_host, proxy_port
+      @@state = state
+      @logger = logger
+      @bot = bot
+      @pdir = pdir
+      @fdir = fdir
+      @datadir = datadir
+      @proxy_host = proxy_host
+      @proxy_port = proxy_port
+      @context = FakeMircContext.new
+      load_plugins
+      load_filters
+    end
+
+    attr_reader :context
+
+    def notice msg
+      @bot.send_notice(@context.target, e2j(msg).delete("\r\n")) if msg
+    end
+
+    def toeuc(str)
+      Kconv::toeuc(str)
+    end
+    def j2e(str)
+      NKF::nkf('-Je', str)
+    end
+    def e2j(str)
+      NKF::nkf('-Ej', str)
+    end
+
+    def http_get(url)
+      url =~ /http:\/\/([^\/]+)(\/.*)$/
+      serv = $1
+      path = $2
+      Net::HTTP.version_1_2
+      if (@proxy_host)
+        Net::HTTP::Proxy(@proxy_host, @proxy_port)
+      else
+        Net::HTTP
+      end.start(serv) do |http|
+        resp, data = http.get(path, nil)
+        while (resp.code =~ /^5/)
+          sleep(3)
+          resp, data = http.get(path, nil)
+        end
+        return toeuc(data)
+      end
+    end
+
+    def output res
+      if (!res || res == "")
+      elsif (res.class == Array)
+        res.each do |r|
+          notice(r)
+        end
+      else
+        notice(res)
+      end
+    end
+
+    def invoke_filter arg
+      begin
+        @filters.keys.each do |name|
+          res = invoke_filter_impl(name, arg)
+          if (res)
+            output(res)
+            @logger.slog "filter: #{name}(#{arg}) => #{e2j(res.to_s)}"
+          end
+        end
+      rescue Exception
+        @logger.slog $!.to_s
+        $!.backtrace.each{|i| @logger.slog(i) }
+        notice("Ⅸ(’肋’)Ⅸ 拺陸請引仄凶")
+        notice($!.to_s)
+      end
+    end
+
+    def invoke_filter_impl(cmd, arg)
+      rbname = File.join(@fdir, "#{cmd}.rb")
+      if (File.exist?(rbname) &&
+          (!@filters.key?(cmd) || File.mtime(rbname) > @filters[cmd][1]))
+        @logger.slog "#{rbname} is modified. reload it.\n"
+        load_filter(cmd)
+      end
+      @filters[cmd][0].call(arg)
+    end
+
+    def invoke cmd, arg
+      begin
+        if (cmd =~ /^([^#]+)(#.*)$/)
+          cmd = $1
+          @context.target = $2
+        end
+
+        res = invoke_impl(cmd, arg)
+
+        if (res)
+          output(res)
+          @logger.slog "#{cmd}(#{arg}) => #{e2j(res.to_s)}"
+          return true
+        else
+          @logger.slog "#{cmd}: command not found"
+          return false
+        end
+      rescue Exception
+        @logger.slog $!.to_s
+        $!.backtrace.each{|i| @logger.slog(i) }
+        notice("Ⅸ(’肋’)Ⅸ 拺陸請引仄凶")
+        notice($!.to_s)
+        return true
+      end
+    end
+
+    def invoke_impl cmd, arg
+      if (arg =~ /^([a-zA-Z!]+)\>(.*)/)
+        r = invoke_impl($1, $2)
+        if (r.class == String)
+          arg = r
+        end
+      end
+
+      rbname = File.join(@pdir, "#{cmd}.rb")
+      if (File.exist?(rbname) &&
+          (!@plugins.key?(cmd) || File.mtime(rbname) > @plugins[cmd][2]))
+        @logger.slog "#{rbname} is modified. reload it.\n"
+        load_plugin(cmd)
+      end
+
+      if (@plugins.key?(cmd))
+        res = @plugins[cmd][1].call(arg)
+        return res
+      else
+        return nil
+      end
+    end
+
+    def load_plugins
+      @plugins = Hash.new
+
+      Dir.glob(File.join(@pdir, "*.rb")) do |plugin|
+        begin
+          load_plugin(File.basename(plugin, ".rb"))
+        rescue Exception
+          @logger.slog($!.to_s)
+          $!.backtrace.each{|i| @logger.slog(i) }
+        end
+      end
+    end
+
+    def load_plugin(name)
+      open(File.join(@pdir, "#{name}.rb")) do |src|
+        self.instance_eval(src.read)
+      end
+
+      if (self.methods.include?("#{name}_init"))
+        self.method("#{name}_init").call
+      end
+
+      @plugins[name] = [
+                        if (name =~ /!/)
+                          self.method("#{name.sub(/!/, '')}_desc!").call
+                        else
+                          self.method("#{name}_desc").call
+                        end,
+                        self.method(name),
+                        Time.now
+                       ]
+    end
+
+    def load_filters
+      @filters = Hash.new
+
+      Dir.glob(File.join(@fdir, "*.rb")) do |plugin|
+        begin
+          load_filter(File.basename(plugin, ".rb"))
+        rescue Exception
+          @logger.slog($!.to_s)
+          $!.backtrace.each{|i| @logger.slog(i) }
+        end
+      end
+    end
+
+    def load_filter(name)
+      open(File.join(@fdir, "#{name}.rb")) do |src|
+        self.instance_eval(src.read)
+      end
+
+      if (self.methods.include?("#{name}_init"))
+        self.method("#{name}_init").call
+      end
+
+      @filters[name] = [self.method(name), Time.now]
+    end
+  end
+
+  def bot_initialize
+    pdir = @bot_config[:plugins] || "./mirc_plugins"
+    fdir = @bot_config[:filters] || "./mirc_filters"
+    datadir = @bot_config[:datadir] || "./mirc_data"
+    proxy_host = @bot_config[:proxy_host]
+    proxy_port = @bot_config[:proxy_port]
+    @mirc = FakeMirc.new(@state, @logger, self, pdir, fdir, datadir, proxy_host, proxy_port)
+  end
+
+  def privmsg_impl prefix, cn, msg
+    begin
+      cmd = nil
+      arg = nil
+      forward_cmd = false
+      if (msg =~ /^([a-zA-Z!]+(#[^#]+)?)\>(.*)/)
+        cmd = $1
+        arg = $3
+        forward_cmd = true
+      elsif (msg =~ /^(.*?)>([a-zA-Z!]+)$/)
+        cmd = $2
+        arg = $1
+      else
+        @mirc.context.set(prefix, cn)
+        @mirc.invoke_filter(msg)
+        return
+      end
+
+      @mirc.context.set(prefix, cn)
+      ret = @mirc.invoke(cmd, arg)
+
+      if (!ret && forward_cmd)
+        if (msg =~ /^(.*?)>([a-zA-Z!]+)$/)
+          cmd = $2
+          arg = $1
+          @mirc.invoke(cmd, arg)
+        end
+      end
+    rescue Exception
+      @logger.slog($!.to_s)
+      $!.backtrace.each{|i| @logger.slog(i) }
+    end
+  end
+
+  def on_privmsg prefix, cn, msg
+    Thread.new{
+      privmsg_impl(prefix, cn, msg)
+    }
+    return nil
+  end
+
+  def on_invite prefix, cn
+    send_msg Cmd.join(cn)
+  end
+end
