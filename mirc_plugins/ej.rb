@@ -9,7 +9,7 @@ def ej_desc
 end
 
 def ej(msg)
-  query = toeuc(msg)
+  query = URI.encode(msg.toutf8)
   # goo ではutf8が使われている
 
   # 検索パタンを作る。「完全一致モード」で英和辞書を呼び出す
