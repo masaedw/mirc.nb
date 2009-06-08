@@ -1,6 +1,6 @@
 # -*- coding: euc-jp -*-
-def _desc
-  "s>{pop,push,apply} n: スタックを操作します"
+def s_desc
+  "s>{pop,push,apply}: スタックを操作します"
 end
 
 def s(msg)
@@ -9,11 +9,14 @@ def s(msg)
 
   case msgs[0]
   when "pop"
-    @stack.pop msgs[1]
+    @stack.pop.to_s
   when "push"
     @stack.push msgs[1]
+    @stack.last
   when "apply"
     s_apply
+  when "show"
+    "["+@stack.join(", ")+"]"
   else
     "なんかおかしいです"
   end
@@ -25,8 +28,8 @@ def s_apply
     return "オペランドが足りません"
   end
 
-  if ! ops.include? @stack.first
-    return "そんなオペレータ知りません #{@stack.first}"
+  if ! ops.include? @stack.last
+    return "そんなオペレータ知りません #{@stack.last}"
   end
 
   op = @stack.pop
@@ -43,4 +46,5 @@ def s_apply
               when "/"
                 a / b
               end
+  @stack.last.to_s
 end
