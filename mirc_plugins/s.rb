@@ -1,6 +1,6 @@
 # -*- coding: euc-jp -*-
 def s_desc
-  "s>{pop,push,apply}: スタックを操作します"
+  "s>{insn}: スタックを操作します/ pop push add sub div mul show"
 end
 
 def s(msg)
@@ -13,38 +13,25 @@ def s(msg)
   when "push"
     @stack.push msgs[1]
     @stack.last
-  when "apply"
-    s_apply
-  when "show"
-    "["+@stack.join(", ")+"]"
+  when "add"
+    s_do{|a,b| a+b }
+  when "sub"
+    s_do{|a,b| a-b }
+  when "mul"
+    s_do{|a,b| a*b }
+  when "div"
+    s_do{|a,b| a/b }
   else
     "なんかおかしいです"
   end
 end
 
-def s_apply
-  ops = ["+", "-", "*", "/"]
-  if @stack.size < 3
+def s_do &block
+  n = block.arity
+  if @stack.size < n
     return "オペランドが足りません"
   end
-
-  if ! ops.include? @stack.last
-    return "そんなオペレータ知りません #{@stack.last}"
-  end
-
-  op = @stack.pop
-  a = @stack.pop.to_f
-  b = @stack.pop.to_f
-
-  @stack.push case op
-              when "+"
-                a + b
-              when "-"
-                a - b
-              when "*"
-                a * b
-              when "/"
-                a / b
-              end
+  args = Array.new(3){@stack.pop.to_f}
+  @stack.push block.call(*args)
   @stack.last.to_s
 end
