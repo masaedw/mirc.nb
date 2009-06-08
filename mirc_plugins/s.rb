@@ -1,6 +1,6 @@
 # -*- coding: euc-jp -*-
 def s_desc
-  "s>{insn}: スタックを操作します/ pop push add sub div mul show"
+  "s>{insn}: スタックを操作します/ pop push add sub div mul show tr"
 end
 
 def s(msg)
@@ -21,6 +21,10 @@ def s(msg)
     s_do{|a,b| a*b }
   when "div"
     s_do{|a,b| a/b }
+  when "tr"
+    s_do{|a,b| [a,b]}
+  when "show"
+    "["+@stack.join(", ")+"]"
   else
     "なんかおかしいです"
   end
@@ -31,7 +35,13 @@ def s_do &block
   if @stack.size < n
     return "オペランドが足りません"
   end
-  args = Array.new(3){@stack.pop.to_f}
-  @stack.push block.call(*args)
+  args = Array.new(n){@stack.pop.to_f}
+  ret = block.call(*args)
+  case ret
+  when Array
+    @stack += ret
+  else
+    @stack.push ret
+  end
   @stack.last.to_s
 end
