@@ -22,7 +22,10 @@ def pass msg
        "ユーザ名は tucc",
        "http://tucc.aa0.netvolante.jp/~muto/logs/today-tucc.txt",
        "http://tucc.aa0.netvolante.jp/~muto/logs/yesterday-tucc.txt",
-       "パスワードはそんなに変更されないので、ブラウザのパスワード保存機能を使うのがおすすめです。"
+       "パスワードはそんなに変更されないので、ブラウザのパスワード保存機能を使うのがおすすめです。",
+       " ",
+       "過去のログはサーバのファイルシステム上の ~muto/logs/irc.edw-CS-(チャネル名)/ に保存されています。",
+       "内輪話なので過去ログはweb経由では公開していませんが、サーバを直接覗ける人なら誰でも見えるようになっています。"
       ].each do |msg|
         target_notice(@context.nick, msg)
       end
