@@ -20,6 +20,8 @@ def unko msg
     kao("ガッ!#{$1}")
   when /どう(み|見)ても.+です/e
     kao("本当にありがとうございました。")
+  when /,|，/e 
+    "まんこ"*j2e(msg).strip.gsub("，",",").count(",")
 #  when /^[*\d+-\/()\. %]+$/
 #    calc(msg)
   end
